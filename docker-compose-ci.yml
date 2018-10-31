@@ -1,0 +1,125 @@
+version: '2'
+services:
+  jenkins:
+    container_name: ci_jenkins
+    image: 40001:latest  
+    ports:
+      - "8080:8080"
+    restart: always
+    environment:
+      - JAVA_OPTS:-Djava.awt.headless=true
+    links:
+      - sonarqube
+    networks: 
+      vpci:
+        ipv4_address: 10.5.0.2
+    volumes:
+      - /Users/tuusuario/volume/jenkins/sonar-scanner-3.0.3.778-linux:/opt/sonar-scanner-3.0.3.778
+      - /Users/tuusuario/volume/jenkins/home:/var/jenkins_home:rw
+      - /Users/tuusuario/volume/jenkins/seedjobs:/var/jenkins_home/workspace/seedjobs/jobs
+      - /Users/tuusuario/volume/jenkins/seedJobsForm/shell:/var/jenkins_home/workspace/seedJobsForm/shell
+  sonarqube:
+    container_name: ci_sonarqube
+    image: sonarqube:6.7
+    ports:
+     - "40000:9000"
+    restart: always
+    links:
+     - db
+    environment:
+     - SONARQUBE_JDBC_URL=jdbc:postgresql://db:5432/sonar
+    networks:
+     vpci:
+       ipv4_address: 10.5.0.3
+    volumes:
+     - /Users/tuusuario/volume/sonarqube/extensions:/opt/sonarqube/extensions
+     - /Users/tuusuario/volume/sonarqube/bundled-plugins:/opt/sonarqube/lib/bundled-plugins
+  db:
+    container_name: ci_postgres
+    image: postgres:latest
+    environment:
+     - POSTGRES_USER=sonar
+     - POSTGRES_PASSWORD=sonar
+    restart: always
+    ports:
+        - "54322:5432"
+    networks:
+     vpci:
+       ipv4_address: 10.5.0.4
+  gitlab:
+    image: store/gitlab/gitlab-ce:10.2.4-ce.0 
+    container_name: ci_gitlab
+    networks:
+     vpci:
+       ipv4_address: 10.5.0.5
+    environment:
+      GITLAB_OMNIBUS_CONFIG: "  gitlab_rails['lfs_enabled'] = true; gitlab_rails['gitlab_shell_ssh_port'] = 40004 ; gitlab_rails['gitlab_ssh_host'] = 'nombre del host de la maquina' ;"
+    ports:
+      # both ports must match the port from external_url above
+      - "40002:80"
+      - "40003:443"
+      - "40004:22"
+    restart: always
+    volumes: 
+      - /Users/tuusuario/volume/gitlab/gitlab.rb:/etc/gitlab/gitlab.rb:rw
+      - /Users/tuusuario/volume/gitlab/opt:/var/opt/gitlab:rw
+    depends_on:
+      - postgresql
+      - redis
+  redis:
+    container_name: ci_redis
+    image: redis:3.0.7-alpine
+    restart: always    
+    networks:
+     vpci:
+       ipv4_address: 10.5.0.6
+  postgresql:
+    image: postgres:latest
+    container_name: ci_postgresql
+    networks:
+     vpci:
+       ipv4_address: 10.5.0.7
+    environment:
+      - POSTGRES_USER=gitlab
+      - POSTGRES_PASSWORD=gitlab
+      - POSTGRES_DB=gitlabhq_production
+    ports:
+        - "54320:5432"
+    restart: always
+    volumes:
+      - /Users/tuusuario/volume/postgres-gitlab:/var/lib/postgresql:rw
+  openldap:
+    container_name: ci_ldap
+    image: osixia/openldap:1.1.9
+    networks:
+     vpci:
+       ipv4_address: 10.5.0.8
+    ports:
+      - "1389:389"
+    restart: always
+    environment:
+      LDAP_ORGANISATION: "IVAN" # nombre de tu empresa 
+      LDAP_DOMAIN: "ivan.cl" # dominio de tu empresa
+      LDAP_ADMIN_PASSWORD: "fWXMxADgkh5hBPPgi" # clave de tu empresa 
+    volumes:
+      - /Users/tuusuario/volume/openldap/lib:/var/lib/ldap
+      - /Users/tuusuario/volume/openldap/slapd:/etc/ldap/slapd.d
+  phpldapadmin:
+    container_name: ci_ldapadmin
+    image: osixia/phpldapadmin:0.7.0
+    networks:
+     vpci:
+       ipv4_address: 10.5.0.9
+    ports:
+      - "40005:80"
+      - "40006:443"
+    restart: always
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "openldap"
+networks:
+  vpci:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+          gateway: 10.5.0.1
